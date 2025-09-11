@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew:*)",
+      "Read(//c/Users/chris/SmartAttendanceBackend/**)",
+      "Bash(npm start)",
+      "Read(//c/Users/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
