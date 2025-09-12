@@ -3,7 +3,9 @@ package com.mandelbulb.smartattendancesystem.ui
 import android.graphics.Bitmap
 import android.util.Log
 import android.widget.Toast
+import androidx.annotation.OptIn
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -33,7 +35,6 @@ import androidx.core.content.ContextCompat
 import com.mandelbulb.smartattendancesystem.data.AppDatabase
 import com.mandelbulb.smartattendancesystem.data.UserPreferences
 import com.mandelbulb.smartattendancesystem.data.UserProfileEntity
-import com.mandelbulb.smartattendancesystem.ml.EmbeddingModel
 import com.mandelbulb.smartattendancesystem.ml.LivenessDetector
 import com.mandelbulb.smartattendancesystem.network.AzureFaceService
 import com.mandelbulb.smartattendancesystem.network.PostgresApiService
@@ -46,6 +47,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
 
+@OptIn(ExperimentalGetImage::class)
 @Composable
 fun RegistrationScreen(
     onRegistrationComplete: () -> Unit
@@ -64,7 +66,6 @@ fun RegistrationScreen(
     var showLivenessInstructions by remember { mutableStateOf(false) }
     
     val simpleFaceDetector = remember { SimpleFaceDetector(context) }
-    val embeddingModel = remember { EmbeddingModel(context) }
     val livenessDetector = remember { LivenessDetector() }
     val userPreferences = remember { UserPreferences(context) }
     val database = remember { AppDatabase.getInstance(context) }
@@ -101,7 +102,7 @@ fun RegistrationScreen(
         Text(
             text = "Employee Registration",
             style = MaterialTheme.typography.headlineMedium,
-            modifier = Modifier.padding(bottom = 24.dp)
+            modifier = Modifier.padding(vertical = 24.dp)
         )
         
         when (registrationStep) {
@@ -115,46 +116,54 @@ fun RegistrationScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         OutlinedTextField(
-                            value = employeeName,
-                            onValueChange = { employeeName = it },
-                            label = { Text("Full Name") },
-                            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
-                        )
-                        
-                        OutlinedTextField(
                             value = employeeCode,
                             onValueChange = { employeeCode = it },
                             label = { Text("Employee Code") },
-                            leadingIcon = { Icon(Icons.Default.Star, contentDescription = null) },
                             modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
+                            singleLine = true,
+                            leadingIcon = {
+                                Icon(Icons.Default.Person, contentDescription = null)
+                            }
+                        )
+                        
+                        OutlinedTextField(
+                            value = employeeName,
+                            onValueChange = { employeeName = it },
+                            label = { Text("Full Name") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            leadingIcon = {
+                                Icon(Icons.Default.AccountCircle, contentDescription = null)
+                            }
                         )
                         
                         OutlinedTextField(
                             value = department,
                             onValueChange = { department = it },
                             label = { Text("Department") },
-                            leadingIcon = { Icon(Icons.Default.Home, contentDescription = null) },
                             modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
+                            singleLine = true,
+                            leadingIcon = {
+                                Icon(Icons.Default.Home, contentDescription = null)
+                            }
                         )
                         
                         Button(
                             onClick = {
-                                if (employeeName.isNotBlank() && 
-                                    employeeCode.isNotBlank() && 
+                                if (employeeCode.isNotBlank() && 
+                                    employeeName.isNotBlank() && 
                                     department.isNotBlank()) {
                                     registrationStep = RegistrationStep.FACE_CAPTURE
-                                    showLivenessInstructions = true
                                 } else {
                                     Toast.makeText(context, "Please fill all fields", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = employeeCode.isNotBlank() && 
+                                     employeeName.isNotBlank() && 
+                                     department.isNotBlank()
                         ) {
-                            Text("Next: Capture Face")
+                            Text("Next - Capture Face")
                             Spacer(modifier = Modifier.width(8.dp))
                             Icon(Icons.Default.ArrowForward, contentDescription = null)
                         }
@@ -163,317 +172,226 @@ fun RegistrationScreen(
             }
             
             RegistrationStep.FACE_CAPTURE -> {
-                if (showLivenessInstructions) {
-                    AlertDialog(
-                        onDismissRequest = { showLivenessInstructions = false },
-                        title = { Text("Liveness Check Instructions") },
-                        text = {
-                            Text(
-                                "For security, we need to verify you're a real person:\n\n" +
-                                "1. Position your face in the frame\n" +
-                                "2. Blink your eyes naturally\n" +
-                                "3. Smile briefly\n" +
-                                "4. Turn your head slightly left and right\n\n" +
-                                "The liveness score will increase as you perform these actions."
-                            )
-                        },
-                        confirmButton = {
-                            TextButton(onClick = { showLivenessInstructions = false }) {
-                                Text("Got it")
-                            }
-                        }
-                    )
-                }
-                
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
+                        Text(
+                            text = "Face Capture",
+                            style = MaterialTheme.typography.headlineSmall
+                        )
+                        
                         if (capturedFace == null) {
-                            AndroidView(
-                                factory = { ctx ->
-                                    PreviewView(ctx).also { pv ->
-                                        previewView = pv
-                                        pv.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                                        
-                                        val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
-                                        cameraProviderFuture.addListener({
-                                            val provider = cameraProviderFuture.get()
-                                            cameraProvider = provider
-                                            
-                                            val preview = Preview.Builder().build().also {
-                                                it.setSurfaceProvider(pv.surfaceProvider)
-                                            }
-                                            
-                                            imageCapture = ImageCapture.Builder()
-                                                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                                                .build()
-                                            
-                                            // Create a simple face detector for liveness
-                                            val faceDetectorOptions = FaceDetectorOptions.Builder()
-                                                .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
-                                                .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
-                                                .setMinFaceSize(0.15f)
-                                                .build()
-                                            
-                                            val faceDetectorForLiveness = FaceDetection.getClient(faceDetectorOptions)
-                                            mlKitFaceDetector = faceDetectorForLiveness
-                                            
-                                            // Add ImageAnalysis for liveness detection
-                                            val imageAnalyzer = ImageAnalysis.Builder()
-                                                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                                                .setTargetResolution(android.util.Size(640, 480))
-                                                .build()
-                                                .also { analysis ->
-                                                    var isProcessing = false
-                                                    var frameCount = 0
-                                                    
-                                                    analysis.setAnalyzer(
-                                                        ContextCompat.getMainExecutor(ctx),
-                                                        { imageProxy ->
-                                                            frameCount++
-                                                            // Process every 30th frame to reduce load significantly
-                                                            if (!isProcessing && frameCount % 30 == 0) {
-                                                                isProcessing = true
-                                                                
-                                                                val mediaImage = imageProxy.image
-                                                                if (mediaImage != null) {
-                                                                    val image = InputImage.fromMediaImage(
-                                                                        mediaImage, 
-                                                                        imageProxy.imageInfo.rotationDegrees
-                                                                    )
-                                                                    
-                                                                    faceDetectorForLiveness.process(image)
-                                                                        .addOnSuccessListener { faces ->
-                                                                            try {
-                                                                                if (faces.isNotEmpty()) {
-                                                                                    val face = faces[0]
-                                                                                    
-                                                                                    // Simple liveness scoring
-                                                                                    var score = 0.2f // Base score for face detected
-                                                                                    
-                                                                                    // Add score for smile
-                                                                                    face.smilingProbability?.let {
-                                                                                        if (it > 0.3f) score += 0.2f
-                                                                                    }
-                                                                                    
-                                                                                    // Add score for eyes open
-                                                                                    face.leftEyeOpenProbability?.let { left ->
-                                                                                        face.rightEyeOpenProbability?.let { right ->
-                                                                                            if (left > 0.5f && right > 0.5f) {
-                                                                                                score += 0.3f
-                                                                                            }
-                                                                                        }
-                                                                                    }
-                                                                                    
-                                                                                    // Add score for head movement
-                                                                                    face.headEulerAngleY?.let { yaw ->
-                                                                                        if (kotlin.math.abs(yaw) > 5f) {
-                                                                                            score += 0.3f
-                                                                                        }
-                                                                                    }
-                                                                                    
-                                                                                    // Update score with smoothing
-                                                                                    livenessScore = (livenessScore * 0.7f + score * 0.3f).coerceIn(0f, 1f)
-                                                                                    
-                                                                                    Log.d("RegistrationScreen", "Liveness score: $livenessScore (smile: ${face.smilingProbability}, eyes: ${face.leftEyeOpenProbability}/${face.rightEyeOpenProbability})")
-                                                                                } else {
-                                                                                    // Gradually decrease score if no face
-                                                                                    livenessScore = (livenessScore * 0.9f).coerceIn(0f, 1f)
-                                                                                }
-                                                                            } catch (e: Exception) {
-                                                                                Log.e("RegistrationScreen", "Error processing face", e)
-                                                                            } finally {
-                                                                                isProcessing = false
-                                                                                imageProxy.close()
-                                                                            }
-                                                                        }
-                                                                        .addOnFailureListener { e ->
-                                                                            Log.e("RegistrationScreen", "Face detection failed", e)
-                                                                            isProcessing = false
-                                                                            imageProxy.close()
-                                                                        }
-                                                                        .addOnCompleteListener {
-                                                                            // Ensure cleanup happens
-                                                                        }
-                                                                } else {
-                                                                    isProcessing = false
-                                                                    imageProxy.close()
-                                                                }
-                                                            } else {
-                                                                // Close immediately if not processing
-                                                                imageProxy.close()
-                                                            }
-                                                        }
-                                                    )
-                                                }
-                                            
-                                            try {
-                                                provider.unbindAll()
-                                                provider.bindToLifecycle(
-                                                    lifecycleOwner,
-                                                    CameraSelector.DEFAULT_FRONT_CAMERA,
-                                                    preview,
-                                                    imageCapture,
-                                                    imageAnalyzer
-                                                )
-                                            } catch (e: Exception) {
-                                                Log.e("RegistrationScreen", "Camera binding failed", e)
-                                            }
-                                        }, ContextCompat.getMainExecutor(ctx))
-                                    }
-                                },
+                            // Show camera preview
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(400.dp)
-                            )
+                            ) {
+                                AndroidView(
+                                    factory = { ctx ->
+                                        PreviewView(ctx).also { pv ->
+                                            previewView = pv
+                                            
+                                            val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
+                                            cameraProviderFuture.addListener({
+                                                val provider = cameraProviderFuture.get()
+                                                cameraProvider = provider
+                                                
+                                                val preview = Preview.Builder()
+                                                    .build()
+                                                    .also {
+                                                        it.surfaceProvider = pv.surfaceProvider
+                                                    }
+                                                
+                                                val capture = ImageCapture.Builder()
+                                                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                                                    .build()
+                                                imageCapture = capture
+                                                
+                                                // Set up ML Kit face detector
+                                                val options = FaceDetectorOptions.Builder()
+                                                    .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
+                                                    .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
+                                                    .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
+                                                    .setMinFaceSize(0.15f)
+                                                    .enableTracking()
+                                                    .build()
+                                                
+                                                mlKitFaceDetector = FaceDetection.getClient(options)
+                                                
+                                                val imageAnalysis = ImageAnalysis.Builder()
+                                                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                                                    .build()
+                                                
+                                                imageAnalysis.setAnalyzer(ContextCompat.getMainExecutor(ctx)) { imageProxy ->
+                                                    val mediaImage = imageProxy.image
+                                                    if (mediaImage != null) {
+                                                        val image = InputImage.fromMediaImage(
+                                                            mediaImage,
+                                                            imageProxy.imageInfo.rotationDegrees
+                                                        )
+                                                        
+                                                        mlKitFaceDetector?.process(image)
+                                                            ?.addOnSuccessListener { faces ->
+                                                                if (faces.isNotEmpty()) {
+                                                                    val face = faces[0]
+                                                                    // Calculate liveness score based on face attributes
+                                                                    val smileProb = face.smilingProbability ?: 0f
+                                                                    val leftEyeOpenProb = face.leftEyeOpenProbability ?: 0f
+                                                                    val rightEyeOpenProb = face.rightEyeOpenProbability ?: 0f
+                                                                    
+                                                                    livenessScore = (leftEyeOpenProb + rightEyeOpenProb) / 2f
+                                                                }
+                                                            }
+                                                            ?.addOnCompleteListener {
+                                                                imageProxy.close()
+                                                            }
+                                                    } else {
+                                                        imageProxy.close()
+                                                    }
+                                                }
+                                                
+                                                try {
+                                                    provider.unbindAll()
+                                                    provider.bindToLifecycle(
+                                                        lifecycleOwner,
+                                                        CameraSelector.DEFAULT_FRONT_CAMERA,
+                                                        preview,
+                                                        capture,
+                                                        imageAnalysis
+                                                    )
+                                                } catch (e: Exception) {
+                                                    Log.e("RegistrationScreen", "Camera binding failed", e)
+                                                }
+                                            }, ContextCompat.getMainExecutor(ctx))
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                
+                                // Liveness indicator
+                                if (livenessScore > 0) {
+                                    Card(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(16.dp),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = if (livenessScore > 0.5f) 
+                                                MaterialTheme.colorScheme.primary 
+                                            else 
+                                                MaterialTheme.colorScheme.error
+                                        )
+                                    ) {
+                                        Text(
+                                            text = "Liveness: ${(livenessScore * 100).toInt()}%",
+                                            modifier = Modifier.padding(8.dp),
+                                            color = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    }
+                                }
+                            }
                             
-                            LinearProgressIndicator(
-                                progress = livenessScore,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp)
-                            )
-                            
-                            Text(
-                                text = "Liveness Score: ${(livenessScore * 100).toInt()}%",
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(bottom = 4.dp)
-                            )
-                            
-                            Text(
-                                text = when {
-                                    livenessScore < 0.1f -> "Position your face in the frame"
-                                    livenessScore < 0.3f -> "Try smiling or blinking"
-                                    livenessScore < 0.5f -> "Turn your head slightly"
-                                    livenessScore < 0.7f -> "Good! Keep moving naturally"
-                                    else -> "Perfect! Ready to capture"
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
+                            // Liveness instructions button
+                            TextButton(onClick = { showLivenessInstructions = true }) {
+                                Icon(Icons.Default.Info, contentDescription = null)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Liveness Tips")
+                            }
                             
                             Button(
                                 onClick = {
-                                    captureAndProcessFace(
-                                        imageCapture = imageCapture,
-                                        context = context,
-                                        faceDetector = simpleFaceDetector,
-                                        onSuccess = { bitmap ->
-                                            capturedFace = bitmap
-                                            registrationStep = RegistrationStep.CONFIRMATION
-                                        },
-                                        onError = { error ->
-                                            Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
-                                        }
-                                    )
+                                    val capture = imageCapture
+                                    if (capture != null) {
+                                        val photoFile = File(
+                                            context.cacheDir,
+                                            "face_${System.currentTimeMillis()}.jpg"
+                                        )
+                                        
+                                        val outputFileOptions = ImageCapture.OutputFileOptions
+                                            .Builder(photoFile)
+                                            .build()
+                                        
+                                        capture.takePicture(
+                                            outputFileOptions,
+                                            ContextCompat.getMainExecutor(context),
+                                            object : ImageCapture.OnImageSavedCallback {
+                                                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                                                    // Use BitmapUtils to properly handle rotation
+                                                    val bitmap = BitmapUtils.loadAndRotateBitmap(photoFile.absolutePath)
+                                                    
+                                                    if (bitmap != null) {
+                                                        // Check face with ML Kit detector
+                                                        val inputImage = InputImage.fromBitmap(bitmap, 0)
+                                                        mlKitFaceDetector?.process(inputImage)
+                                                            ?.addOnSuccessListener { faces ->
+                                                                if (faces.isNotEmpty()) {
+                                                                    capturedFace = bitmap
+                                                                    
+                                                                    // Clean up camera
+                                                                    cameraProvider?.unbindAll()
+                                                                    
+                                                                    Toast.makeText(context, "Face captured successfully", Toast.LENGTH_SHORT).show()
+                                                                } else {
+                                                                    Toast.makeText(context, "No face detected. Please try again.", Toast.LENGTH_SHORT).show()
+                                                                }
+                                                                photoFile.delete()
+                                                            }
+                                                            ?.addOnFailureListener { e ->
+                                                                Log.e("RegistrationScreen", "Face detection failed", e)
+                                                                Toast.makeText(context, "Face detection failed", Toast.LENGTH_SHORT).show()
+                                                                photoFile.delete()
+                                                            }
+                                                    } else {
+                                                        Toast.makeText(context, "Failed to process image", Toast.LENGTH_SHORT).show()
+                                                        photoFile.delete()
+                                                    }
+                                                }
+                                                
+                                                override fun onError(exception: ImageCaptureException) {
+                                                    Log.e("RegistrationScreen", "Photo capture failed", exception)
+                                                    Toast.makeText(context, "Photo capture failed", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        )
+                                    }
                                 },
                                 modifier = Modifier.fillMaxWidth(),
-                                enabled = true // Always enabled for testing
+                                enabled = livenessScore > 0.5f
                             ) {
-                                Icon(Icons.Default.Add, contentDescription = null)
+                                Icon(Icons.Default.Face, contentDescription = null)
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("Capture Face")
                             }
                         } else {
+                            // Show captured face
                             Image(
                                 bitmap = capturedFace!!.asImageBitmap(),
-                                contentDescription = "Captured Face",
+                                contentDescription = "Captured face",
                                 modifier = Modifier
-                                    .size(200.dp)
-                                    .padding(bottom = 16.dp)
+                                    .fillMaxWidth()
+                                    .height(300.dp)
                             )
-                        }
-                        
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            OutlinedButton(
-                                onClick = {
-                                    registrationStep = RegistrationStep.DETAILS
-                                    capturedFace = null
-                                }
-                            ) {
-                                Icon(Icons.Default.ArrowBack, contentDescription = null)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Back")
-                            }
                             
-                            if (capturedFace != null) {
-                                Button(
-                                    onClick = {
-                                        capturedFace = null
-                                        livenessScore = 0f
-                                    }
-                                ) {
-                                    Text("Retake")
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            
-            RegistrationStep.CONFIRMATION -> {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Confirm Registration",
-                            style = MaterialTheme.typography.headlineSmall,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
-                        
-                        capturedFace?.let {
-                            Image(
-                                bitmap = it.asImageBitmap(),
-                                contentDescription = "Face",
-                                modifier = Modifier
-                                    .size(150.dp)
-                                    .padding(bottom = 16.dp)
-                            )
-                        }
-                        
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            InfoRow("Name:", employeeName)
-                            InfoRow("Code:", employeeCode)
-                            InfoRow("Department:", department)
-                        }
-                        
-                        Spacer(modifier = Modifier.height(24.dp))
-                        
-                        if (isProcessing) {
-                            CircularProgressIndicator()
-                            Text(
-                                text = "Registering...",
-                                modifier = Modifier.padding(top = 8.dp)
-                            )
-                        } else {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 OutlinedButton(
-                                    onClick = {
-                                        registrationStep = RegistrationStep.FACE_CAPTURE
+                                    onClick = { 
                                         capturedFace = null
-                                    }
+                                        livenessScore = 0f
+                                    },
+                                    modifier = Modifier.weight(1f)
                                 ) {
-                                    Text("Retake Photo")
+                                    Icon(Icons.Default.Refresh, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Retake")
                                 }
                                 
                                 Button(
@@ -485,100 +403,120 @@ fun RegistrationScreen(
                                                 department = department,
                                                 faceBitmap = capturedFace!!,
                                                 context = context,
-                                                embeddingModel = embeddingModel,
                                                 postgresApi = postgresApi,
                                                 azureService = azureService,
                                                 database = database,
                                                 userPreferences = userPreferences,
                                                 onProcessing = { isProcessing = it },
                                                 onSuccess = {
-                                                    Toast.makeText(context, "Registration successful!", Toast.LENGTH_SHORT).show()
-                                                    onRegistrationComplete()
+                                                    registrationStep = RegistrationStep.COMPLETE
                                                 },
                                                 onError = { error ->
                                                     Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                                                    // Allow retry
+                                                    capturedFace = null
+                                                    livenessScore = 0f
                                                 }
                                             )
                                         }
-                                    }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    enabled = !isProcessing
                                 ) {
-                                    Icon(Icons.Default.Check, contentDescription = null)
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Complete Registration")
+                                    if (isProcessing) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Icon(Icons.Default.Check, contentDescription = null)
+                                    }
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(if (isProcessing) "Registering..." else "Register")
                                 }
                             }
                         }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun InfoRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium
-        )
-    }
-}
-
-private enum class RegistrationStep {
-    DETAILS, FACE_CAPTURE, CONFIRMATION
-}
-
-private fun captureAndProcessFace(
-    imageCapture: ImageCapture?,
-    context: android.content.Context,
-    faceDetector: SimpleFaceDetector,
-    onSuccess: (Bitmap) -> Unit,
-    onError: (String) -> Unit
-) {
-    if (imageCapture == null) {
-        onError("Camera not ready")
-        return
-    }
-    
-    val photoFile = File(context.cacheDir, "temp_face_${System.currentTimeMillis()}.jpg")
-    val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
-    
-    imageCapture.takePicture(
-        outputOptions,
-        ContextCompat.getMainExecutor(context),
-        object : ImageCapture.OnImageSavedCallback {
-            override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                val bitmap = BitmapUtils.loadAndRotateBitmap(photoFile.absolutePath)
-                if (bitmap != null) {
-                    faceDetector.detectFace(bitmap) { faces ->
-                        if (faces.isNotEmpty()) {
-                            onSuccess(bitmap)
-                        } else {
-                            onError("No face detected. Please try again.")
+                        
+                        OutlinedButton(
+                            onClick = { registrationStep = RegistrationStep.DETAILS },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Back to Details")
                         }
-                        photoFile.delete()
                     }
-                } else {
-                    onError("Failed to process image")
-                    photoFile.delete()
                 }
             }
             
-            override fun onError(exception: ImageCaptureException) {
-                onError("Capture failed: ${exception.message}")
-                photoFile.delete()
+            RegistrationStep.COMPLETE -> {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        
+                        Text(
+                            text = "Registration Successful!",
+                            style = MaterialTheme.typography.headlineSmall,
+                            textAlign = TextAlign.Center
+                        )
+                        
+                        Text(
+                            text = "Employee $employeeName has been registered successfully with Azure Face API.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            textAlign = TextAlign.Center
+                        )
+                        
+                        Button(
+                            onClick = onRegistrationComplete,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Continue to Dashboard")
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(Icons.Default.ArrowForward, contentDescription = null)
+                        }
+                    }
+                }
             }
         }
-    )
+    }
+    
+    // Liveness instructions dialog
+    if (showLivenessInstructions) {
+        AlertDialog(
+            onDismissRequest = { showLivenessInstructions = false },
+            title = { Text("Liveness Detection Tips") },
+            text = {
+                Text(
+                    "For better liveness detection:\n" +
+                    "• Ensure good lighting\n" +
+                    "• Keep your eyes open\n" +
+                    "• Face the camera directly\n" +
+                    "• Remove sunglasses or masks\n" +
+                    "• Stay still during capture"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showLivenessInstructions = false }) {
+                    Text("Got it")
+                }
+            }
+        )
+    }
 }
 
 private suspend fun registerEmployee(
@@ -587,7 +525,6 @@ private suspend fun registerEmployee(
     department: String,
     faceBitmap: Bitmap,
     context: android.content.Context,
-    embeddingModel: EmbeddingModel,
     postgresApi: PostgresApiService,
     azureService: AzureFaceService,
     database: AppDatabase,
@@ -599,82 +536,50 @@ private suspend fun registerEmployee(
     withContext(Dispatchers.Main) { onProcessing(true) }
     
     try {
-        val embedding = withContext(Dispatchers.Default) {
-            embeddingModel.generateEmbedding(faceBitmap)
-        }
+        Log.d("Registration", "Starting face registration for $name")
         
-        val existingEmployee = postgresApi.findEmployeeByEmbedding(embedding)
+        // Ensure person group exists
+        azureService.createPersonGroupIfNeeded()
         
-        if (existingEmployee != null) {
-            if (existingEmployee.employeeCode == code) {
-                val userProfile = UserProfileEntity(
-                    id = 1,
-                    employeeId = existingEmployee.employeeId,
-                    employeeCode = existingEmployee.employeeCode,
-                    name = existingEmployee.name,
-                    department = existingEmployee.department,
-                    embedding = embedding.toByteArray(),
-                    faceId = existingEmployee.faceId,
-                    registrationDate = existingEmployee.registrationDate,
-                    lastSync = System.currentTimeMillis()
-                )
-                
-                database.userProfileDao().insert(userProfile)
-                
-                userPreferences.saveUserProfile(
-                    isRegistered = true,
-                    employeeId = existingEmployee.employeeId,
-                    employeeCode = existingEmployee.employeeCode,
-                    name = existingEmployee.name,
-                    department = existingEmployee.department,
-                    azureFaceId = existingEmployee.faceId
-                )
-                
-                // Save face embedding for offline verification
-                userPreferences.saveFaceEmbedding(embedding)
-                
-                withContext(Dispatchers.Main) {
-                    onProcessing(false)
-                    onSuccess()
-                }
-            } else {
-                withContext(Dispatchers.Main) {
-                    onProcessing(false)
-                    onError("Face already registered with different employee code")
-                }
-            }
-        } else {
-            val detectedFaces = azureService.detectFace(faceBitmap)
+        // Use Azure Face API for registration
+        val detectedFaces = azureService.detectFace(faceBitmap)
+        Log.d("Registration", "Azure detected ${detectedFaces.size} face(s)")
+        
+        if (detectedFaces.isNotEmpty()) {
             var azureFaceId: String? = null
             
-            if (detectedFaces.isNotEmpty()) {
-                val personId = azureService.createPerson(
-                    name = name,
-                    userData = code
-                )
-                
-                if (personId != null) {
-                    azureFaceId = azureService.addFaceToPerson(personId, faceBitmap)
-                    azureService.trainPersonGroup()
-                }
+            // Create person in Azure Face API
+            val personId = azureService.createPerson(
+                name = name,
+                userData = code
+            )
+            
+            if (personId != null) {
+                azureFaceId = azureService.addFaceToPerson(personId, faceBitmap)
+                azureService.trainPersonGroup()
             }
             
+            // Generate a unique employee ID
+            val employeeId = UUID.randomUUID().toString()
+            
+            // Register with backend (no local embeddings)
             val newEmployee = postgresApi.registerEmployee(
                 employeeCode = code,
                 name = name,
                 department = department,
-                embedding = embedding,
+                embedding = FloatArray(0), // No local embeddings - Azure Face API only
                 faceId = azureFaceId
             )
             
             if (newEmployee != null) {
+                // Save to local database
                 val userProfile = UserProfileEntity(
                     id = 1,
                     employeeId = newEmployee.employeeId,
                     employeeCode = code,
                     name = name,
                     department = department,
-                    embedding = embedding.toByteArray(),
+                    embedding = ByteArray(0), // No local embeddings
                     faceId = azureFaceId,
                     registrationDate = System.currentTimeMillis(),
                     lastSync = System.currentTimeMillis()
@@ -682,6 +587,7 @@ private suspend fun registerEmployee(
                 
                 database.userProfileDao().insert(userProfile)
                 
+                // Save to preferences
                 userPreferences.saveUserProfile(
                     isRegistered = true,
                     employeeId = newEmployee.employeeId,
@@ -690,9 +596,6 @@ private suspend fun registerEmployee(
                     department = department,
                     azureFaceId = azureFaceId
                 )
-                
-                // Save face embedding for offline verification
-                userPreferences.saveFaceEmbedding(embedding)
                 
                 withContext(Dispatchers.Main) {
                     onProcessing(false)
@@ -704,6 +607,11 @@ private suspend fun registerEmployee(
                     onError("Failed to register with server")
                 }
             }
+        } else {
+            withContext(Dispatchers.Main) {
+                onProcessing(false)
+                onError("No face detected. Please ensure your face is clearly visible.")
+            }
         }
     } catch (e: Exception) {
         Log.e("Registration", "Error", e)
@@ -714,8 +622,8 @@ private suspend fun registerEmployee(
     }
 }
 
-private fun FloatArray.toByteArray(): ByteArray {
-    val buffer = java.nio.ByteBuffer.allocate(size * 4)
-    forEach { buffer.putFloat(it) }
-    return buffer.array()
+enum class RegistrationStep {
+    DETAILS,
+    FACE_CAPTURE,
+    COMPLETE
 }

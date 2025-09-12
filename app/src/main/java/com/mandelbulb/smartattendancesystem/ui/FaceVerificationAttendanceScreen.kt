@@ -27,7 +27,6 @@ import androidx.core.content.ContextCompat
 import com.mandelbulb.smartattendancesystem.data.AppDatabase
 import com.mandelbulb.smartattendancesystem.data.AttendanceEntity
 import com.mandelbulb.smartattendancesystem.data.UserPreferences
-import com.mandelbulb.smartattendancesystem.ml.EmbeddingModel
 import com.mandelbulb.smartattendancesystem.network.NetworkMonitor
 import com.mandelbulb.smartattendancesystem.network.PostgresApiService
 import com.mandelbulb.smartattendancesystem.utils.NetworkUtils
@@ -35,7 +34,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
-import kotlin.math.sqrt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,12 +49,10 @@ fun FaceVerificationAttendanceScreen(
     val database = remember { AppDatabase.getInstance(context) }
     val userPreferences = remember { UserPreferences(context) }
     val postgresApi = remember { PostgresApiService() }
-    val embeddingModel = remember { EmbeddingModel(context) }
     
     var isProcessing by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf("Position your face in the camera") }
     var showCamera by remember { mutableStateOf(true) }
-    var capturedEmbedding by remember { mutableStateOf<FloatArray?>(null) }
     
     val imageCapture = remember { ImageCapture.Builder().build() }
     val previewView = remember { PreviewView(context) }
@@ -97,43 +93,32 @@ fun FaceVerificationAttendanceScreen(
                         try {
                             statusMessage = "Processing face..."
                             
-                            // Extract embedding from photo
-                            val bitmap = android.graphics.BitmapFactory.decodeFile(photoFile.absolutePath)
-                            val embedding = if (bitmap != null) embeddingModel.generateEmbedding(bitmap) else null
+                            statusMessage = "Recording attendance..."
                             
-                            if (embedding != null) {
-                                capturedEmbedding = embedding
-                                statusMessage = "Verifying identity..."
-                                
-                                // Perform attendance with face verification
-                                performAttendanceWithVerification(
-                                    context = context,
-                                    database = database,
-                                    postgresApi = postgresApi,
-                                    userPreferences = userPreferences,
-                                    checkType = checkType,
-                                    embedding = embedding,
-                                    onSuccess = {
-                                        statusMessage = "✓ ${if (checkType == "IN") "Checked in" else "Checked out"} successfully!"
-                                        showCamera = false
-                                        scope.launch {
-                                            delay(1500)
-                                            onSuccess()
-                                        }
-                                    },
-                                    onError = { error ->
-                                        statusMessage = error
-                                        isProcessing = false
-                                        scope.launch {
-                                            delay(3000)
-                                            statusMessage = "Try again - position your face in the camera"
-                                        }
+                            // Perform attendance without face verification (Azure Face API only during login)
+                            performAttendanceWithVerification(
+                                context = context,
+                                database = database,
+                                postgresApi = postgresApi,
+                                userPreferences = userPreferences,
+                                checkType = checkType,
+                                onSuccess = {
+                                    statusMessage = "✓ ${if (checkType == "IN") "Checked in" else "Checked out"} successfully!"
+                                    showCamera = false
+                                    scope.launch {
+                                        delay(1500)
+                                        onSuccess()
                                     }
-                                )
-                            } else {
-                                statusMessage = "No face detected. Please try again."
-                                isProcessing = false
-                            }
+                                },
+                                onError = { error ->
+                                    statusMessage = error
+                                    isProcessing = false
+                                    scope.launch {
+                                        delay(3000)
+                                        statusMessage = "Try again - position your face in the camera"
+                                    }
+                                }
+                            )
                         } finally {
                             photoFile.delete()
                         }
@@ -269,7 +254,6 @@ private suspend fun performAttendanceWithVerification(
     postgresApi: PostgresApiService,
     userPreferences: UserPreferences,
     checkType: String,
-    embedding: FloatArray,
     onSuccess: () -> Unit,
     onError: (String) -> Unit
 ) {
@@ -302,7 +286,7 @@ private suspend fun performAttendanceWithVerification(
                             employeeId = employeeId,
                             checkType = checkType,
                             deviceId = deviceId,
-                            embedding = null // No embedding needed - Azure verified during login
+                            embedding = null // Azure Face API verification only during login
                         )
                         
                         if (success) {
@@ -320,25 +304,5 @@ private suspend fun performAttendanceWithVerification(
     }
 }
 
-// Offline attendance is handled in main function - no local face verification needed
-
-// Calculate cosine similarity between two embeddings
-private fun calculateCosineSimilarity(embedding1: FloatArray, embedding2: FloatArray): Float {
-    if (embedding1.size != embedding2.size) return 0f
-    
-    var dotProduct = 0f
-    var norm1 = 0f
-    var norm2 = 0f
-    
-    for (i in embedding1.indices) {
-        dotProduct += embedding1[i] * embedding2[i]
-        norm1 += embedding1[i] * embedding1[i]
-        norm2 += embedding2[i] * embedding2[i]
-    }
-    
-    return if (norm1 == 0f || norm2 == 0f) {
-        0f
-    } else {
-        dotProduct / (sqrt(norm1) * sqrt(norm2))
-    }
-}
+// Azure Face API verification happens only during registration and login
+// Check-in/out relies on Azure authentication from login session

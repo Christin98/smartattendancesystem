@@ -19,7 +19,6 @@ class UserPreferences(private val context: Context) {
         val EMPLOYEE_NAME = stringPreferencesKey("employee_name")
         val DEPARTMENT = stringPreferencesKey("department")
         val FACE_ID = stringPreferencesKey("face_id") // Azure Face API person ID
-        val FACE_EMBEDDING = stringPreferencesKey("face_embedding") // Stored as comma-separated string
         val REGISTRATION_DATE = longPreferencesKey("registration_date")
         val LAST_SYNC = longPreferencesKey("last_sync")
     }
@@ -114,41 +113,6 @@ class UserPreferences(private val context: Context) {
     // Clear user profile (alias for clearUserData)
     suspend fun clearUserProfile() {
         clearUserData()
-    }
-    
-    // Save face embedding for offline verification
-    suspend fun saveFaceEmbedding(embedding: FloatArray) {
-        val embeddingString = embedding.joinToString(",")
-        context.dataStore.edit { preferences ->
-            preferences[FACE_EMBEDDING] = embeddingString
-        }
-    }
-    
-    // Get face embedding for offline verification
-    val faceEmbedding: Flow<FloatArray?> = context.dataStore.data
-        .map { preferences ->
-            preferences[FACE_EMBEDDING]?.let { embeddingString ->
-                try {
-                    embeddingString.split(",").map { it.toFloat() }.toFloatArray()
-                } catch (e: Exception) {
-                    null
-                }
-            }
-        }
-    
-    // Get face embedding synchronously (for offline verification)
-    suspend fun getFaceEmbedding(): FloatArray? {
-        var embedding: FloatArray? = null
-        context.dataStore.data.collect { preferences ->
-            preferences[FACE_EMBEDDING]?.let { embeddingString ->
-                try {
-                    embedding = embeddingString.split(",").map { it.toFloat() }.toFloatArray()
-                } catch (e: Exception) {
-                    embedding = null
-                }
-            }
-        }
-        return embedding
     }
     
     // Get user for offline check

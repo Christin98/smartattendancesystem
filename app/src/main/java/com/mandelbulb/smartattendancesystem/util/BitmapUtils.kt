@@ -42,14 +42,11 @@ object BitmapUtils {
                 else -> 0
             }
             
-            // For front camera, typically need 270 degree rotation
-            val finalRotation = if (rotationDegrees == 0) 270 else rotationDegrees
+            Log.d("BitmapUtils", "Image orientation: $orientation, rotation: $rotationDegrees degrees")
             
-            Log.d("BitmapUtils", "Image orientation: $orientation, rotation: $finalRotation degrees")
-            
-            if (finalRotation != 0) {
+            if (rotationDegrees != 0) {
                 val matrix = Matrix()
-                matrix.postRotate(finalRotation.toFloat())
+                matrix.postRotate(rotationDegrees.toFloat())
                 Bitmap.createBitmap(
                     bitmap,
                     0,

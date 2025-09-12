@@ -62,10 +62,23 @@ class AzureFaceService(
     suspend fun detectFace(bitmap: Bitmap): List<DetectedFace> = withContext(Dispatchers.IO) {
         val url = "$endpoint/face/v1.0/detect?returnFaceId=true&returnFaceLandmarks=true"
         
-        // Convert bitmap to byte array
+        // Resize bitmap if necessary to keep under 6MB
+        val resizedBitmap = resizeBitmapIfNeeded(bitmap)
+        
+        // Convert bitmap to byte array with compression
         val stream = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 100, stream)
+        var quality = 95
+        resizedBitmap.compress(Bitmap.CompressFormat.JPEG, quality, stream)
+        
+        // If still too large, compress more
+        while (stream.toByteArray().size > 5 * 1024 * 1024 && quality > 30) { // 5MB to be safe
+            stream.reset()
+            quality -= 10
+            resizedBitmap.compress(Bitmap.CompressFormat.JPEG, quality, stream)
+        }
+        
         val byteArray = stream.toByteArray()
+        Log.d(TAG, "Image size for Azure: ${byteArray.size / 1024}KB, quality: $quality")
         
         val requestBody = byteArray.toRequestBody("application/octet-stream".toMediaType())
         
@@ -80,13 +93,20 @@ class AzureFaceService(
             val response = client.newCall(request).execute()
             if (response.isSuccessful) {
                 val responseBody = response.body?.string() ?: "[]"
-                parseFaceDetectionResponse(responseBody)
+                Log.d(TAG, "Face detection response: $responseBody")
+                val faces = parseFaceDetectionResponse(responseBody)
+                Log.d(TAG, "Detected ${faces.size} face(s)")
+                faces
             } else {
-                Log.e(TAG, "Face detection failed: ${response.code} - ${response.body?.string()}")
+                val errorBody = response.body?.string()
+                Log.e(TAG, "Face detection failed: ${response.code} - $errorBody")
                 emptyList()
             }
         } catch (e: IOException) {
             Log.e(TAG, "Network error during face detection", e)
+            emptyList()
+        } catch (e: Exception) {
+            Log.e(TAG, "Unexpected error during face detection", e)
             emptyList()
         }
     }
@@ -170,9 +190,21 @@ class AzureFaceService(
     suspend fun addFaceToPerson(personId: String, bitmap: Bitmap): String? = withContext(Dispatchers.IO) {
         val url = "$endpoint/face/v1.0/persongroups/$PERSON_GROUP_ID/persons/$personId/persistedFaces"
         
-        // Convert bitmap to byte array
+        // Resize bitmap if necessary to keep under 6MB
+        val resizedBitmap = resizeBitmapIfNeeded(bitmap)
+        
+        // Convert bitmap to byte array with compression
         val stream = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 100, stream)
+        var quality = 95
+        resizedBitmap.compress(Bitmap.CompressFormat.JPEG, quality, stream)
+        
+        // If still too large, compress more
+        while (stream.toByteArray().size > 5 * 1024 * 1024 && quality > 30) { // 5MB to be safe
+            stream.reset()
+            quality -= 10
+            resizedBitmap.compress(Bitmap.CompressFormat.JPEG, quality, stream)
+        }
+        
         val byteArray = stream.toByteArray()
         
         val requestBody = byteArray.toRequestBody("application/octet-stream".toMediaType())
@@ -197,6 +229,58 @@ class AzureFaceService(
         } catch (e: Exception) {
             Log.e(TAG, "Error adding face", e)
             null
+        }
+    }
+    
+    /**
+     * Create person group if it doesn't exist
+     */
+    suspend fun createPersonGroupIfNeeded(): Boolean = withContext(Dispatchers.IO) {
+        val url = "$endpoint/face/v1.0/persongroups/$PERSON_GROUP_ID"
+        
+        // First check if it exists
+        val checkRequest = Request.Builder()
+            .url(url)
+            .addHeader("Ocp-Apim-Subscription-Key", subscriptionKey)
+            .get()
+            .build()
+        
+        try {
+            val checkResponse = client.newCall(checkRequest).execute()
+            if (checkResponse.code == 404) {
+                // Person group doesn't exist, create it
+                Log.d(TAG, "Creating person group: $PERSON_GROUP_ID")
+                
+                val json = JSONObject().apply {
+                    put("name", "Employees")
+                    put("userData", "Employee face recognition group")
+                }
+                
+                val createRequest = Request.Builder()
+                    .url(url)
+                    .addHeader("Ocp-Apim-Subscription-Key", subscriptionKey)
+                    .addHeader("Content-Type", "application/json")
+                    .put(json.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+                
+                val createResponse = client.newCall(createRequest).execute()
+                if (createResponse.isSuccessful) {
+                    Log.d(TAG, "Person group created successfully")
+                    true
+                } else {
+                    Log.e(TAG, "Failed to create person group: ${createResponse.code}")
+                    false
+                }
+            } else if (checkResponse.isSuccessful) {
+                Log.d(TAG, "Person group already exists")
+                true
+            } else {
+                Log.e(TAG, "Error checking person group: ${checkResponse.code}")
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error with person group", e)
+            false
         }
     }
     
@@ -265,5 +349,27 @@ class AzureFaceService(
             Log.e(TAG, "Error parsing identify response", e)
         }
         return FaceVerificationResult(isIdentical = false, confidence = 0.0)
+    }
+    
+    /**
+     * Resize bitmap if it's too large
+     */
+    private fun resizeBitmapIfNeeded(bitmap: Bitmap): Bitmap {
+        val maxDimension = 1920 // Max width or height
+        
+        if (bitmap.width <= maxDimension && bitmap.height <= maxDimension) {
+            return bitmap
+        }
+        
+        val ratio = if (bitmap.width > bitmap.height) {
+            maxDimension.toFloat() / bitmap.width
+        } else {
+            maxDimension.toFloat() / bitmap.height
+        }
+        
+        val newWidth = (bitmap.width * ratio).toInt()
+        val newHeight = (bitmap.height * ratio).toInt()
+        
+        return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
     }
 }
