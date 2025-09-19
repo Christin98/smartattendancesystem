@@ -38,6 +38,12 @@ import com.mandelbulb.smartattendancesystem.data.UserProfileEntity
 import com.mandelbulb.smartattendancesystem.ml.LivenessDetector
 import com.mandelbulb.smartattendancesystem.network.AzureFaceService
 import com.mandelbulb.smartattendancesystem.network.PostgresApiService
+import com.mandelbulb.smartattendancesystem.network.FaceRecognitionManager
+import com.mandelbulb.smartattendancesystem.network.OfflineFaceNetService
+import com.mandelbulb.smartattendancesystem.ui.components.AnimatedCard
+import com.mandelbulb.smartattendancesystem.ui.components.AnimatedButton
+import com.mandelbulb.smartattendancesystem.ui.components.AnimatedCheckmark
+import com.mandelbulb.smartattendancesystem.ui.components.calculateStaggeredDelay
 import com.mandelbulb.smartattendancesystem.util.BitmapUtils
 import com.mandelbulb.smartattendancesystem.util.SimpleFaceDetector
 import kotlinx.coroutines.Dispatchers
@@ -81,7 +87,14 @@ fun RegistrationScreen(
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
     var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
     var mlKitFaceDetector by remember { mutableStateOf<com.google.mlkit.vision.face.FaceDetector?>(null) }
-    
+    var animationsEnabled by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        userPreferences.animationsEnabled.collect { enabled ->
+            animationsEnabled = enabled
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             // Clean up camera resources
@@ -107,9 +120,10 @@ fun RegistrationScreen(
         
         when (registrationStep) {
             RegistrationStep.DETAILS -> {
-                Card(
+                AnimatedCard(
                     modifier = Modifier.fillMaxWidth(),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    animationsEnabled = animationsEnabled,
+                    delayMillis = calculateStaggeredDelay(0)
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
@@ -148,10 +162,10 @@ fun RegistrationScreen(
                             }
                         )
                         
-                        Button(
+                        AnimatedButton(
                             onClick = {
-                                if (employeeCode.isNotBlank() && 
-                                    employeeName.isNotBlank() && 
+                                if (employeeCode.isNotBlank() &&
+                                    employeeName.isNotBlank() &&
                                     department.isNotBlank()) {
                                     registrationStep = RegistrationStep.FACE_CAPTURE
                                 } else {
@@ -159,9 +173,10 @@ fun RegistrationScreen(
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            enabled = employeeCode.isNotBlank() && 
-                                     employeeName.isNotBlank() && 
-                                     department.isNotBlank()
+                            enabled = employeeCode.isNotBlank() &&
+                                     employeeName.isNotBlank() &&
+                                     department.isNotBlank(),
+                            animationsEnabled = animationsEnabled
                         ) {
                             Text("Next - Capture Face")
                             Spacer(modifier = Modifier.width(8.dp))
@@ -172,9 +187,10 @@ fun RegistrationScreen(
             }
             
             RegistrationStep.FACE_CAPTURE -> {
-                Card(
+                AnimatedCard(
                     modifier = Modifier.fillMaxWidth(),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    animationsEnabled = animationsEnabled,
+                    delayMillis = calculateStaggeredDelay(0)
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
@@ -304,7 +320,7 @@ fun RegistrationScreen(
                                 Text("Liveness Tips")
                             }
                             
-                            Button(
+                            AnimatedButton(
                                 onClick = {
                                     val capture = imageCapture
                                     if (capture != null) {
@@ -362,7 +378,8 @@ fun RegistrationScreen(
                                     }
                                 },
                                 modifier = Modifier.fillMaxWidth(),
-                                enabled = livenessScore > 0.5f
+                                enabled = livenessScore > 0.5f,
+                                animationsEnabled = animationsEnabled
                             ) {
                                 Icon(Icons.Default.Face, contentDescription = null)
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -394,7 +411,7 @@ fun RegistrationScreen(
                                     Text("Retake")
                                 }
                                 
-                                Button(
+                                AnimatedButton(
                                     onClick = {
                                         scope.launch {
                                             registerEmployee(
@@ -421,7 +438,8 @@ fun RegistrationScreen(
                                         }
                                     },
                                     modifier = Modifier.weight(1f),
-                                    enabled = !isProcessing
+                                    enabled = !isProcessing,
+                                    animationsEnabled = animationsEnabled
                                 ) {
                                     if (isProcessing) {
                                         CircularProgressIndicator(
@@ -450,23 +468,20 @@ fun RegistrationScreen(
             }
             
             RegistrationStep.COMPLETE -> {
-                Card(
+                AnimatedCard(
                     modifier = Modifier.fillMaxWidth(),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    )
+                    animationsEnabled = animationsEnabled,
+                    delayMillis = calculateStaggeredDelay(0)
                 ) {
                     Column(
                         modifier = Modifier.padding(32.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.primary
+                        AnimatedCheckmark(
+                            isVisible = true,
+                            modifier = Modifier,
+                            animationsEnabled = animationsEnabled
                         )
                         
                         Text(
@@ -481,9 +496,10 @@ fun RegistrationScreen(
                             textAlign = TextAlign.Center
                         )
                         
-                        Button(
+                        AnimatedButton(
                             onClick = onRegistrationComplete,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            animationsEnabled = animationsEnabled
                         ) {
                             Text("Continue to Dashboard")
                             Spacer(modifier = Modifier.width(8.dp))
@@ -537,64 +553,91 @@ private suspend fun registerEmployee(
     
     try {
         Log.d("Registration", "Starting face registration for $name")
-        
-        // Ensure person group exists
-        azureService.createPersonGroupIfNeeded()
-        
-        // Use Azure Face API for registration
-        val detectedFaces = azureService.detectFace(faceBitmap)
-        Log.d("Registration", "Azure detected ${detectedFaces.size} face(s)")
-        
-        if (detectedFaces.isNotEmpty()) {
-            var azureFaceId: String? = null
-            
-            // Create person in Azure Face API
-            val personId = azureService.createPerson(
-                name = name,
-                userData = code
-            )
-            
-            if (personId != null) {
-                azureFaceId = azureService.addFaceToPerson(personId, faceBitmap)
-                azureService.trainPersonGroup()
-            }
-            
-            // Generate a unique employee ID
-            val employeeId = UUID.randomUUID().toString()
-            
-            // Register with backend (no local embeddings)
-            val newEmployee = postgresApi.registerEmployee(
+
+        // Generate a unique employee ID upfront for consistency
+        val employeeId = UUID.randomUUID().toString().lowercase() // Ensure lowercase for PostgreSQL compatibility
+
+        // Use FaceRecognitionManager for dual enrollment (Azure + FaceNet)
+        val faceRecognitionManager = FaceRecognitionManager(context)
+
+        // Enroll face with both online and offline systems
+        val enrollmentResult = faceRecognitionManager.enrollFaceWithEmbedding(
+            bitmap = faceBitmap,
+            personId = employeeId,  // Use consistent ID everywhere
+            personName = name
+        )
+
+        if (!enrollmentResult.success) {
+            throw Exception(enrollmentResult.message.ifEmpty { "Face enrollment failed" })
+        }
+
+        // Get the embedding from FaceNet (for offline support)
+        val embedding = enrollmentResult.embedding ?: FloatArray(0)
+        val azureFaceId = enrollmentResult.azureFaceId
+
+        Log.d("Registration", "Face enrolled successfully - Embedding size: ${embedding.size}, Azure Face ID: $azureFaceId")
+
+        // Try to register with backend (include FaceNet embeddings for cross-mode support)
+        Log.d("Registration", "Sending to backend - EmployeeID: $employeeId, EmployeeCode: $code")
+        val newEmployee = try {
+            postgresApi.registerEmployee(
                 employeeCode = code,
                 name = name,
                 department = department,
-                embedding = FloatArray(0), // No local embeddings - Azure Face API only
-                faceId = azureFaceId
+                embedding = embedding,  // Include FaceNet embedding for offline support
+                faceId = azureFaceId,  // Include Azure face ID if available
+                employeeId = employeeId  // Send our locally generated ID to backend
             )
-            
-            if (newEmployee != null) {
-                // Save to local database
+        } catch (e: Exception) {
+            Log.w("Registration", "Failed to register with backend (offline mode?): ${e.message}")
+            null  // Continue with local registration
+        }
+
+        // Log what we got back from backend
+        if (newEmployee != null) {
+            Log.d("Registration", "Backend returned - EmployeeID: ${newEmployee.employeeId}, Our ID: $employeeId")
+            if (newEmployee.employeeId != employeeId) {
+                Log.w("Registration", "WARNING: Backend returned different ID! Backend: ${newEmployee.employeeId}, Local: $employeeId")
+            }
+        } else {
+            Log.d("Registration", "Backend registration failed, using local ID: $employeeId")
+        }
+
+            // Save locally regardless of backend registration success
+            // Backend sync will happen later through SyncManager
+            if (true) {  // Always save locally
+                // Convert embedding to ByteArray for storage
+                val embeddingBytes = if (embedding.isNotEmpty()) {
+                    val buffer = java.nio.ByteBuffer.allocate(embedding.size * 4)
+                    embedding.forEach { buffer.putFloat(it) }
+                    buffer.array()
+                } else {
+                    ByteArray(0)
+                }
+
+                // Save to local database with our consistent employeeId
                 val userProfile = UserProfileEntity(
                     id = 1,
-                    employeeId = newEmployee.employeeId,
+                    employeeId = employeeId,  // Use our locally generated ID consistently
                     employeeCode = code,
                     name = name,
                     department = department,
-                    embedding = ByteArray(0), // No local embeddings
-                    faceId = azureFaceId,
+                    embedding = embeddingBytes,  // Store FaceNet embedding
+                    faceId = azureFaceId,  // Store Azure face ID if available
                     registrationDate = System.currentTimeMillis(),
-                    lastSync = System.currentTimeMillis()
+                    lastSync = if (newEmployee != null) System.currentTimeMillis() else 0L
                 )
-                
+
                 database.userProfileDao().insert(userProfile)
-                
-                // Save to preferences
+
+                // Save to preferences with our consistent employeeId
                 userPreferences.saveUserProfile(
                     isRegistered = true,
-                    employeeId = newEmployee.employeeId,
+                    employeeId = employeeId,  // Use our locally generated ID consistently
                     employeeCode = code,
                     name = name,
                     department = department,
-                    azureFaceId = azureFaceId
+                    azureFaceId = azureFaceId  // Store Azure face ID if available
                 )
                 
                 withContext(Dispatchers.Main) {
@@ -602,17 +645,12 @@ private suspend fun registerEmployee(
                     onSuccess()
                 }
             } else {
+                // This shouldn't happen since we always save locally now
                 withContext(Dispatchers.Main) {
                     onProcessing(false)
-                    onError("Failed to register with server")
+                    onError("Failed to save employee locally")
                 }
             }
-        } else {
-            withContext(Dispatchers.Main) {
-                onProcessing(false)
-                onError("No face detected. Please ensure your face is clearly visible.")
-            }
-        }
     } catch (e: Exception) {
         Log.e("Registration", "Error", e)
         withContext(Dispatchers.Main) {

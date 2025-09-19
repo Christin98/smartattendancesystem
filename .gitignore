@@ -13,3 +13,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Version tracking file (auto-generated)
+app/version.properties

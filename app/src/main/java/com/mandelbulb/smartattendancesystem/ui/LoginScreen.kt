@@ -26,6 +26,11 @@ import com.mandelbulb.smartattendancesystem.data.AppDatabase
 import com.mandelbulb.smartattendancesystem.data.UserPreferences
 import com.mandelbulb.smartattendancesystem.network.AzureFaceService
 import com.mandelbulb.smartattendancesystem.network.PostgresApiService
+import com.mandelbulb.smartattendancesystem.network.FaceRecognitionManager
+import com.mandelbulb.smartattendancesystem.ui.components.AnimatedCard
+import com.mandelbulb.smartattendancesystem.ui.components.AnimatedButton
+import com.mandelbulb.smartattendancesystem.ui.components.AnimatedCheckmark
+import com.mandelbulb.smartattendancesystem.ui.components.calculateStaggeredDelay
 import com.mandelbulb.smartattendancesystem.util.BitmapUtils
 import com.mandelbulb.smartattendancesystem.util.SimpleFaceDetector
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -46,6 +51,7 @@ fun LoginScreen(
     var isProcessing by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf("Position your face in the camera") }
     var showCamera by remember { mutableStateOf(true) }
+    var livenessMessage by remember { mutableStateOf("") }
     
     val imageCapture = remember { ImageCapture.Builder().build() }
     val previewView = remember { PreviewView(context) }
@@ -59,6 +65,14 @@ fun LoginScreen(
             AzureFaceService.SUBSCRIPTION_KEY,
             AzureFaceService.AZURE_ENDPOINT
         )
+    }
+
+    var animationsEnabled by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        userPreferences.animationsEnabled.collect { enabled ->
+            animationsEnabled = enabled
+        }
     }
     
     LaunchedEffect(Unit) {
@@ -95,11 +109,12 @@ fun LoginScreen(
             modifier = Modifier.padding(top = 32.dp)
         )
         
-        Card(
+        AnimatedCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            animationsEnabled = animationsEnabled,
+            delayMillis = calculateStaggeredDelay(0)
         ) {
             if (showCamera) {
                 Box(modifier = Modifier.fillMaxSize()) {
@@ -128,10 +143,19 @@ fun LoginScreen(
                                     strokeWidth = 2.dp
                                 )
                             }
-                            Text(
-                                text = statusMessage,
-                                style = MaterialTheme.typography.bodyLarge
-                            )
+                            Column {
+                                Text(
+                                    text = statusMessage,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                if (livenessMessage.isNotEmpty()) {
+                                    Text(
+                                        text = livenessMessage,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.secondary
+                                    )
+                                }
+                            }
                         }
                     }
                     
@@ -159,11 +183,10 @@ fun LoginScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Icon(
-                        Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        modifier = Modifier.size(80.dp),
-                        tint = MaterialTheme.colorScheme.primary
+                    AnimatedCheckmark(
+                        isVisible = true,
+                        modifier = Modifier,
+                        animationsEnabled = animationsEnabled
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
@@ -181,7 +204,7 @@ fun LoginScreen(
             }
         }
         
-        Button(
+        AnimatedButton(
             onClick = {
                 if (!isProcessing) {
                     captureAndVerifyFace(
@@ -197,17 +220,23 @@ fun LoginScreen(
                         },
                         onSuccess = {
                             statusMessage = "Welcome back!"
+                            livenessMessage = "Face and liveness verified ✓"
                             showCamera = false
                             scope.launch {
                                 kotlinx.coroutines.delay(1500)
                                 onLoginSuccess()
                             }
                         },
+                        onLivenessUpdate = { message ->
+                            livenessMessage = message
+                        },
                         onError = { error ->
                             statusMessage = error
+                            livenessMessage = ""
                             scope.launch {
                                 kotlinx.coroutines.delay(3000)
                                 statusMessage = "Position your face in the camera"
+                                livenessMessage = ""
                             }
                         }
                     )
@@ -216,7 +245,8 @@ fun LoginScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
-            enabled = !isProcessing && showCamera
+            enabled = !isProcessing && showCamera,
+            animationsEnabled = animationsEnabled
         ) {
             if (isProcessing) {
                 CircularProgressIndicator(
@@ -251,7 +281,8 @@ private fun captureAndVerifyFace(
     userPreferences: UserPreferences,
     onProcessing: (Boolean) -> Unit,
     onSuccess: () -> Unit,
-    onError: (String) -> Unit
+    onError: (String) -> Unit,
+    onLivenessUpdate: (String) -> Unit = {}
 ) {
     val photoFile = File(context.cacheDir, "temp_login_${System.currentTimeMillis()}.jpg")
     val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
@@ -274,67 +305,82 @@ private fun captureAndVerifyFace(
                             return@launch
                         }
                         
-                        // Detect face locally first for basic validation
-                        val faces = withContext(Dispatchers.IO) {
-                            val result = mutableListOf<com.google.mlkit.vision.face.Face>()
-                            faceDetector.detectFace(bitmap) { detectedFaces ->
-                                result.addAll(detectedFaces)
-                            }
-                            Thread.sleep(500)
-                            result
-                        }
-                        
-                        if (faces.isEmpty()) {
+                        // Use FaceRecognitionManager for unified face detection and verification
+                        val faceRecognitionManager = FaceRecognitionManager(context)
+
+                        // First check if any faces are detected
+                        val faceCount = faceRecognitionManager.detectFaces(bitmap)
+                        Log.d("LoginScreen", "Detected $faceCount face(s)")
+
+                        if (faceCount == 0) {
                             withContext(Dispatchers.Main) {
                                 onError("No face detected. Please try again.")
                                 onProcessing(false)
                             }
+                            photoFile.delete()
                             return@launch
                         }
-                        
-                        // Use Azure Face API for verification
-                        val detectedFaces = azureService.detectFace(bitmap)
-                        
-                        if (detectedFaces.isNotEmpty()) {
-                            val faceId = detectedFaces[0].faceId
-                            val verificationResult = azureService.identifyFace(faceId)
-                            
-                            if (verificationResult != null && verificationResult.isIdentical) {
-                                // Face recognized by Azure, get employee details
-                                // In a real app, you'd query the backend with the personId
-                                // For now, we'll use the local profile if available
-                                val localProfile = database.userProfileDao().getUserProfile()
-                                
-                                if (localProfile != null && localProfile.faceId != null) {
-                                    // User is registered and face matches
-                                    userPreferences.saveUserProfile(
-                                        isRegistered = true,
-                                        employeeId = localProfile.employeeId,
-                                        employeeCode = localProfile.employeeCode,
-                                        name = localProfile.name,
-                                        department = localProfile.department,
-                                        azureFaceId = localProfile.faceId
-                                    )
-                                    
-                                    withContext(Dispatchers.Main) {
-                                        onSuccess()
-                                        onProcessing(false)
-                                    }
-                                } else {
-                                    withContext(Dispatchers.Main) {
-                                        onError("Please complete registration first")
-                                        onProcessing(false)
-                                    }
-                                }
-                            } else {
-                                withContext(Dispatchers.Main) {
-                                    onError("Face not recognized. Please register first.")
-                                    onProcessing(false)
-                                }
+
+                        // Get stored user profile to verify against
+                        val userProfile = database.userProfileDao().getUserProfile()
+
+                        if (userProfile == null) {
+                            withContext(Dispatchers.Main) {
+                                onError("No user registered. Please register first.")
+                                onProcessing(false)
+                            }
+                            photoFile.delete()
+                            return@launch
+                        }
+
+                        // Update UI to show liveness check
+                        withContext(Dispatchers.Main) {
+                            onLivenessUpdate("Performing liveness check...")
+                        }
+
+                        // Verify face with liveness check using FaceRecognitionManager
+                        val verificationResult = faceRecognitionManager.verifyFace(
+                            bitmap = bitmap,
+                            personId = userProfile.employeeId,
+                            requireLiveness = true
+                        )
+
+                        Log.d("LoginScreen", "Verification result: ${verificationResult.isIdentical}, confidence: ${verificationResult.confidence}, liveness: ${verificationResult.isLive}")
+
+                        if (!verificationResult.isLive) {
+                            // Liveness check failed
+                            withContext(Dispatchers.Main) {
+                                onLivenessUpdate("❌ Liveness check failed (${(verificationResult.livenessConfidence * 100).toInt()}% confidence)")
+                                onError("Spoofing attempt detected! Please use your real face.")
+                                onProcessing(false)
+                            }
+                        } else if (verificationResult.isIdentical && verificationResult.isLive) {
+                            // Update liveness status
+                            withContext(Dispatchers.Main) {
+                                onLivenessUpdate("✓ Liveness verified (${(verificationResult.livenessConfidence * 100).toInt()}% confidence)")
+                            }
+                            // Face verified successfully
+                            userPreferences.saveUserProfile(
+                                isRegistered = true,
+                                employeeId = userProfile.employeeId,
+                                employeeCode = userProfile.employeeCode,
+                                name = userProfile.name,
+                                department = userProfile.department,
+                                azureFaceId = userProfile.faceId
+                            )
+
+                            withContext(Dispatchers.Main) {
+                                onSuccess()
+                                onProcessing(false)
                             }
                         } else {
                             withContext(Dispatchers.Main) {
-                                onError("Could not detect face clearly. Please try again.")
+                                val message = if (!verificationResult.isLive) {
+                                    "Liveness check failed. Please use your real face."
+                                } else {
+                                    "Face not recognized. Please try again."
+                                }
+                                onError(message)
                                 onProcessing(false)
                             }
                         }

@@ -13,10 +13,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.mandelbulb.smartattendancesystem.BuildConfig
 import com.mandelbulb.smartattendancesystem.data.AppDatabase
 import com.mandelbulb.smartattendancesystem.data.AppSettingsEntity
-import com.mandelbulb.smartattendancesystem.sync.AttendanceSyncService
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -36,7 +37,6 @@ fun ApiConfigScreen(
     var showApiKey by remember { mutableStateOf(false) }
     var showAzureKey by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
-    var syncStatus by remember { mutableStateOf<String?>(null) }
     
     LaunchedEffect(Unit) {
         scope.launch {
@@ -61,33 +61,36 @@ fun ApiConfigScreen(
                     }
                 },
                 actions = {
-                    TextButton(
-                        onClick = {
-                            scope.launch {
-                                isSaving = true
-                                val settings = AppSettingsEntity(
-                                    id = 1,
-                                    apiBaseUrl = apiBaseUrl,
-                                    azureEndpoint = azureEndpoint,
-                                    azureSubscriptionKey = azureSubscriptionKey,
-                                    autoSync = autoSync,
-                                    offlineMode = offlineMode,
-                                    lastUpdated = System.currentTimeMillis()
+                    // Only show Save button in debug builds
+                    if (BuildConfig.DEBUG) {
+                        TextButton(
+                            onClick = {
+                                scope.launch {
+                                    isSaving = true
+                                    val settings = AppSettingsEntity(
+                                        id = 1,
+                                        apiBaseUrl = apiBaseUrl,
+                                        azureEndpoint = azureEndpoint,
+                                        azureSubscriptionKey = azureSubscriptionKey,
+                                        autoSync = autoSync,
+                                        offlineMode = offlineMode,
+                                        lastUpdated = System.currentTimeMillis()
+                                    )
+                                    database.appSettingsDao().insert(settings)
+                                    Toast.makeText(context, "Settings saved", Toast.LENGTH_SHORT).show()
+                                    isSaving = false
+                                }
+                            },
+                            enabled = !isSaving
+                        ) {
+                            if (isSaving) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp
                                 )
-                                database.appSettingsDao().insert(settings)
-                                Toast.makeText(context, "Settings saved", Toast.LENGTH_SHORT).show()
-                                isSaving = false
+                            } else {
+                                Text("SAVE")
                             }
-                        },
-                        enabled = !isSaving
-                    ) {
-                        if (isSaving) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Text("SAVE")
                         }
                     }
                 }
@@ -102,233 +105,136 @@ fun ApiConfigScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+            // Show info card for release builds
+            if (!BuildConfig.DEBUG) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
-                    Text(
-                        text = "Backend API Settings",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    
-                    OutlinedTextField(
-                        value = apiBaseUrl,
-                        onValueChange = { apiBaseUrl = it },
-                        label = { Text("API Base URL") },
-                        placeholder = { Text("https://your-api.azurewebsites.net/api") },
-                        leadingIcon = {
-                            Icon(Icons.Default.Home, contentDescription = null)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                    
-                    Text(
-                        text = "Enter the base URL of your PostgreSQL API backend",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = "Azure Face API Settings",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    
-                    OutlinedTextField(
-                        value = azureEndpoint,
-                        onValueChange = { azureEndpoint = it },
-                        label = { Text("Azure Endpoint") },
-                        placeholder = { Text("https://your-resource.cognitiveservices.azure.com") },
-                        leadingIcon = {
-                            Icon(Icons.Default.Info, contentDescription = null)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                    
-                    OutlinedTextField(
-                        value = azureSubscriptionKey,
-                        onValueChange = { azureSubscriptionKey = it },
-                        label = { Text("Subscription Key") },
-                        leadingIcon = {
-                            Icon(Icons.Default.Lock, contentDescription = null)
-                        },
-                        trailingIcon = {
-                            IconButton(onClick = { showAzureKey = !showAzureKey }) {
-                                Icon(
-                                    imageVector = if (showAzureKey) 
-                                        Icons.Default.Done 
-                                    else Icons.Default.Add,
-                                    contentDescription = if (showAzureKey) 
-                                        "Hide key" 
-                                    else "Show key"
-                                )
-                            }
-                        },
-                        visualTransformation = if (showAzureKey) 
-                            VisualTransformation.None 
-                        else PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                    
-                    Text(
-                        text = "Azure Face API credentials for online face verification",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = "Sync Settings",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
+                        Icon(
+                            Icons.Default.Info,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Column {
                             Text(
-                                text = "Auto Sync",
-                                style = MaterialTheme.typography.bodyLarge
+                                text = "Production Build",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                             )
                             Text(
-                                text = "Automatically sync attendance when online",
+                                text = "Advanced settings are hidden in production builds for security.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
                             )
                         }
-                        Switch(
-                            checked = autoSync,
-                            onCheckedChange = { autoSync = it }
-                        )
-                    }
-                    
-                    HorizontalDivider()
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Offline Mode",
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                            Text(
-                                text = "Force offline mode even when connected",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = offlineMode,
-                            onCheckedChange = { offlineMode = it }
-                        )
                     }
                 }
             }
-            
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+            // Only show Backend API Settings in debug builds
+            if (BuildConfig.DEBUG) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
-                    Text(
-                        text = "Manual Sync",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                syncStatus = "Syncing..."
-                                val syncService = AttendanceSyncService(context)
-                                val result = syncService.syncPendingAttendance()
-                                syncStatus = if (result) {
-                                    "Sync completed successfully"
-                                } else {
-                                    "Sync failed. Please check your connection."
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(Icons.Default.Refresh, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Sync Now")
-                    }
-                    
-                    syncStatus?.let {
-                        Card(
+                        Text(
+                            text = "Backend API Settings",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+
+                        OutlinedTextField(
+                            value = apiBaseUrl,
+                            onValueChange = { apiBaseUrl = it },
+                            label = { Text("API Base URL") },
+                            placeholder = { Text("https://your-api.azurewebsites.net/api") },
+                            leadingIcon = {
+                                Icon(Icons.Default.Home, contentDescription = null)
+                            },
                             modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (it.contains("success"))
-                                    MaterialTheme.colorScheme.primaryContainer
-                                else MaterialTheme.colorScheme.errorContainer
-                            )
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = if (it.contains("success"))
-                                        Icons.Default.CheckCircle
-                                    else Icons.Default.Close,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = it,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
-                        }
+                            singleLine = true
+                        )
+
+                        Text(
+                            text = "Enter the base URL of your PostgreSQL API backend",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                    
-                    OutlinedButton(
-                        onClick = {
-                            scope.launch {
-                                val unsyncedCount = database.attendanceDao().getUnsynced().size
-                                syncStatus = "Unsynced records: $unsyncedCount"
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
+                }
+            }
+            
+            // Only show Azure Face API Settings in debug builds
+            if (BuildConfig.DEBUG) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(Icons.Default.Info, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Check Sync Status")
+                        Text(
+                            text = "Azure Face API Settings",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+
+                        OutlinedTextField(
+                            value = azureEndpoint,
+                            onValueChange = { azureEndpoint = it },
+                            label = { Text("Azure Endpoint") },
+                            placeholder = { Text("https://your-resource.cognitiveservices.azure.com") },
+                            leadingIcon = {
+                                Icon(Icons.Default.Info, contentDescription = null)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+
+                        OutlinedTextField(
+                            value = azureSubscriptionKey,
+                            onValueChange = { azureSubscriptionKey = it },
+                            label = { Text("Subscription Key") },
+                            leadingIcon = {
+                                Icon(Icons.Default.Lock, contentDescription = null)
+                            },
+                            trailingIcon = {
+                                IconButton(onClick = { showAzureKey = !showAzureKey }) {
+                                    Icon(
+                                        imageVector = if (showAzureKey)
+                                            Icons.Default.CheckCircle
+                                        else Icons.Default.AddCircle,
+                                        contentDescription = if (showAzureKey)
+                                            "Hide key"
+                                        else "Show key"
+                                    )
+                                }
+                            },
+                            visualTransformation = if (showAzureKey)
+                                VisualTransformation.None
+                            else PasswordVisualTransformation(),
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+
+                        Text(
+                            text = "Azure Face API credentials for online face verification",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }

@@ -21,6 +21,7 @@ class UserPreferences(private val context: Context) {
         val FACE_ID = stringPreferencesKey("face_id") // Azure Face API person ID
         val REGISTRATION_DATE = longPreferencesKey("registration_date")
         val LAST_SYNC = longPreferencesKey("last_sync")
+        val ANIMATIONS_ENABLED = booleanPreferencesKey("animations_enabled")
     }
     
     // Check if user is registered
@@ -41,7 +42,10 @@ class UserPreferences(private val context: Context) {
     
     val department: Flow<String> = context.dataStore.data
         .map { preferences -> preferences[DEPARTMENT] ?: "" }
-    
+
+    val animationsEnabled: Flow<Boolean> = context.dataStore.data
+        .map { preferences -> preferences[ANIMATIONS_ENABLED] ?: true }
+
     // Get current user data
     val userData: Flow<UserData?> = context.dataStore.data
         .map { preferences ->
@@ -113,6 +117,13 @@ class UserPreferences(private val context: Context) {
     // Clear user profile (alias for clearUserData)
     suspend fun clearUserProfile() {
         clearUserData()
+    }
+
+    // Toggle animations
+    suspend fun setAnimationsEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[ANIMATIONS_ENABLED] = enabled
+        }
     }
     
     // Get user for offline check

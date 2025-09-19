@@ -16,7 +16,7 @@ class PostgresApiService {
     
     companion object {
         // TODO: Replace with your actual API endpoint
-        const val API_BASE_URL = "https://691d08503752.ngrok-free.app/api"
+        const val API_BASE_URL = "https://smart-attendance-backend-ruby.vercel.app/api/"
         const val API_KEY = "apifacekey"
     }
     
@@ -86,16 +86,19 @@ class PostgresApiService {
         name: String,
         department: String,
         embedding: FloatArray,
-        faceId: String? = null
+        faceId: String? = null,
+        employeeId: String? = null  // Add optional employeeId parameter
     ): Employee? = withContext(Dispatchers.IO) {
         val url = "$API_BASE_URL/employees/register"
-        
+
         val json = JSONObject().apply {
+            // Include employeeId if provided (for consistent ID across systems)
+            employeeId?.let { put("employeeId", it) }
             put("employeeCode", employeeCode)
             put("name", name)
             put("department", department)
             faceId?.let { put("faceId", it) }
-            
+
             val embeddingArray = JSONArray()
             embedding.forEach { embeddingArray.put(it) }
             put("embedding", embeddingArray)
@@ -133,14 +136,15 @@ class PostgresApiService {
         checkType: String,
         deviceId: String,
         location: String? = null,
-        embedding: FloatArray? = null
+        embedding: FloatArray? = null,
+        timestamp: Long = System.currentTimeMillis()
     ): Boolean = withContext(Dispatchers.IO) {
         val url = "$API_BASE_URL/attendance/record"
         
         val json = JSONObject().apply {
             put("employeeId", employeeId)
             put("checkType", checkType)
-            put("timestamp", System.currentTimeMillis())
+            put("timestamp", timestamp)
             put("deviceId", deviceId)
             location?.let { put("location", it) }
             

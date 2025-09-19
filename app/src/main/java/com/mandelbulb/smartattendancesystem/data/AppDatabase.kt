@@ -23,11 +23,11 @@ abstract class AppDatabase : RoomDatabase() {
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val inst = Room.databaseBuilder(
-                    context.applicationContext, 
-                    AppDatabase::class.java, 
-                    "smart-attendance-db"
+                    context.applicationContext,
+                    AppDatabase::class.java,
+                    "smart_attendance"
                 )
-                    .fallbackToDestructiveMigration() // For development
+                    .fallbackToDestructiveMigration(false) // For development
                     .build()
                 INSTANCE = inst
                 inst

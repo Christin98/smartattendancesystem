@@ -16,6 +16,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import com.mandelbulb.smartattendancesystem.data.UserPreferences
+import com.mandelbulb.smartattendancesystem.sync.SyncManager
 import com.mandelbulb.smartattendancesystem.ui.*
 import com.mandelbulb.smartattendancesystem.ui.theme.SmartAttendanceSystemTheme
 import kotlinx.coroutines.flow.first
@@ -23,17 +24,45 @@ import kotlinx.coroutines.runBlocking
 
 class MainActivity : ComponentActivity() {
 
-    private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+    private lateinit var syncManager: SyncManager
+
+    private val cameraPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!granted) {
             Toast.makeText(this, "Camera permission required", Toast.LENGTH_SHORT).show()
         }
     }
 
+    private val locationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        val coarseLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+
+        if (!fineLocationGranted && !coarseLocationGranted) {
+            Toast.makeText(this, "Location permission helps track attendance location", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Initialize SyncManager for background sync
+        syncManager = SyncManager(this)
+
         // request camera permission if not granted
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            permissionLauncher.launch(Manifest.permission.CAMERA)
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+
+        // request location permissions if not granted
+        val locationPermissions = arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+        if (locationPermissions.any {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }) {
+            locationPermissionLauncher.launch(locationPermissions)
         }
 
         val userPreferences = UserPreferences(this)
@@ -63,12 +92,25 @@ class MainActivity : ComponentActivity() {
                         "main" -> {
                             SingleUserMainScreen(
                                 onNavigateToSettings = { currentScreen = "settings" },
+                                onNavigateToSync = { currentScreen = "sync" },
                                 onLogout = { currentScreen = "login" }
                             )
                         }
                         "settings" -> {
+                            SettingsScreen(
+                                onNavigateBack = { currentScreen = "main" },
+                                onNavigateToApiConfig = { currentScreen = "api_config" },
+                                onNavigateToSync = { currentScreen = "sync" }
+                            )
+                        }
+                        "api_config" -> {
                             ApiConfigScreen(
-                                onBack = { currentScreen = "main" }
+                                onBack = { currentScreen = "settings" }
+                            )
+                        }
+                        "sync" -> {
+                            SyncScreen(
+                                onNavigateBack = { currentScreen = "main" }
                             )
                         }
                     }
@@ -79,5 +121,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        // Clean up sync manager
+        syncManager.stopPeriodicSync()
     }
 }
