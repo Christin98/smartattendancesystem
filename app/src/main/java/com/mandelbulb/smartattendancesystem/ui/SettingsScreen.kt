@@ -671,15 +671,6 @@ fun SettingsMenuItem(
 
 // Helper function to format build time
 private fun formatBuildTime(buildTime: String): String {
-    return try {
-        // Parse the ISO datetime and format it nicely
-        val parts = buildTime.replace("T", " ").split(".")
-        if (parts.isNotEmpty()) {
-            parts[0] // Return date and time without milliseconds
-        } else {
-            buildTime
-        }
-    } catch (e: Exception) {
-        buildTime
-    }
+    // Build time is already in the correct format from BuildConfig
+    return buildTime
 }

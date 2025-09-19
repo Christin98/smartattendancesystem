@@ -99,7 +99,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Add build timestamp and build number
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+        val dateFormat = SimpleDateFormat("EEE MMM dd HH:mm:ss zzz yyyy", Locale.ENGLISH)
+        dateFormat.timeZone = TimeZone.getTimeZone("Asia/Kolkata")
         buildConfigField("String", "BUILD_TIME", "\"${dateFormat.format(Date())}\"")
         buildConfigField("String", "BUILD_NUMBER", "\"${versionProps["VERSION_BUILD"]}\"")
     }
@@ -140,6 +141,9 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+
+    // Extended Material Icons for more icon options
+    implementation("androidx.compose.material:material-icons-extended")
 
     // CameraX (use PreviewView and ImageCapture)
     implementation(libs.androidx.camera.core)

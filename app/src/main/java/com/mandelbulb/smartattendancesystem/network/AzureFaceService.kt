@@ -11,6 +11,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import androidx.core.graphics.scale
 
 class AzureFaceService(
     private val subscriptionKey: String,
@@ -370,6 +371,6 @@ class AzureFaceService(
         val newWidth = (bitmap.width * ratio).toInt()
         val newHeight = (bitmap.height * ratio).toInt()
         
-        return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+        return bitmap.scale(newWidth, newHeight)
     }
 }

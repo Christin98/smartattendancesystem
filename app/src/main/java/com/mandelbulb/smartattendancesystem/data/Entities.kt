@@ -4,18 +4,18 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import androidx.room.Index
 
-// Single user profile stored locally
+// Multi-user profile support stored locally
 @Entity(tableName = "user_profile")
 data class UserProfileEntity(
-    @PrimaryKey val id: Int = 1, // Only one user per device
-    val employeeId: String,
+    @PrimaryKey val employeeId: String, // Use employeeId as primary key for multi-user support
     val employeeCode: String,
     val name: String,
     val department: String,
     val embedding: ByteArray, // Local face embedding for offline
     val faceId: String? = null, // Azure Face API person ID
     val registrationDate: Long,
-    val lastSync: Long = 0
+    val lastSync: Long = 0,
+    val isCurrentUser: Boolean = false // Track which user is currently logged in
 )
 
 // Local attendance records

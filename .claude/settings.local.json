@@ -11,7 +11,8 @@
       "Bash(C:/Users/chris/AppData/Local/Android/Sdk/platform-tools/adb.exe install -r app/build/outputs/apk/debug/app-debug.apk)",
       "Bash(C:/Users/chris/AppData/Local/Android/Sdk/platform-tools/adb.exe devices:*)",
       "Bash(C:/Users/chris/AppData/Local/Android/Sdk/platform-tools/adb.exe uninstall:*)",
-      "Bash(C:/Users/chris/AppData/Local/Android/Sdk/platform-tools/adb.exe install app/build/outputs/apk/debug/app-debug.apk)"
+      "Bash(C:/Users/chris/AppData/Local/Android/Sdk/platform-tools/adb.exe install app/build/outputs/apk/debug/app-debug.apk)",
+      "Bash(del \"C:\\Users\\chris\\AndroidStudioProjects\\SmartAttendanceSystem\\app\\src\\main\\java\\com\\mandelbulb\\smartattendancesystem\\ui\\components\\FontAwesomeIcons.kt\")"
     ],
     "deny": [],
     "ask": []

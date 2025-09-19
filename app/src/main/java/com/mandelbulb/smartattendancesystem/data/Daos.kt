@@ -7,18 +7,33 @@ import kotlinx.coroutines.flow.Flow
 interface UserProfileDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(profile: UserProfileEntity)
-    
-    @Query("SELECT * FROM user_profile WHERE id = 1")
+
+    @Query("SELECT * FROM user_profile WHERE isCurrentUser = 1")
     suspend fun getUserProfile(): UserProfileEntity?
-    
-    @Query("SELECT * FROM user_profile WHERE id = 1")
+
+    @Query("SELECT * FROM user_profile WHERE isCurrentUser = 1")
     fun getUserProfileFlow(): Flow<UserProfileEntity?>
-    
+
+    @Query("SELECT * FROM user_profile WHERE employeeId = :employeeId")
+    suspend fun getUserProfileByEmployeeId(employeeId: String): UserProfileEntity?
+
+    @Query("SELECT * FROM user_profile")
+    suspend fun getAllUserProfiles(): List<UserProfileEntity>
+
+    @Query("UPDATE user_profile SET isCurrentUser = 0")
+    suspend fun clearCurrentUser()
+
+    @Query("UPDATE user_profile SET isCurrentUser = 1 WHERE employeeId = :employeeId")
+    suspend fun setCurrentUser(employeeId: String)
+
     @Query("DELETE FROM user_profile")
     suspend fun deleteUserProfile()
-    
-    @Query("UPDATE user_profile SET lastSync = :timestamp WHERE id = 1")
-    suspend fun updateLastSync(timestamp: Long)
+
+    @Query("DELETE FROM user_profile WHERE employeeId = :employeeId")
+    suspend fun deleteUserProfileByEmployeeId(employeeId: String)
+
+    @Query("UPDATE user_profile SET lastSync = :timestamp WHERE employeeId = :employeeId")
+    suspend fun updateLastSync(employeeId: String, timestamp: Long)
 }
 
 @Dao

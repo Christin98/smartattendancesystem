@@ -17,6 +17,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.ObjectInputStream
 import java.io.ObjectOutputStream
+import androidx.core.graphics.createBitmap
 
 class OfflineFaceNetService(private val context: Context) {
     companion object {
@@ -156,13 +157,14 @@ class OfflineFaceNetService(private val context: Context) {
 
                     // If the best match is NOT the expected person, reject
                     if (bestMatchPersonId != personId) {
-                        Log.w(TAG, "Face best matches person $bestMatchPersonId, not $personId. Rejecting.")
+                        Log.w(TAG, "Face best matches person $bestMatchPersonId (similarity: $bestSimilarity), not expected $personId (similarity: $similarity). Rejecting for security.")
                         return@withContext VerificationResult(
                             isIdentical = false,
                             confidence = similarity,
-                            message = "Face does not match this user"
+                            message = "Face recognized but belongs to a different user"
                         )
                     }
+                    Log.d(TAG, "Best match confirmed as expected person: $personId with similarity $bestSimilarity")
                 }
 
                 Log.d(TAG, "Face verification result - Similarity: $similarity, L2 Distance: $l2Distance, Match: $isMatch")
@@ -291,7 +293,7 @@ class OfflineFaceNetService(private val context: Context) {
 
         // Resize to square aspect ratio for FaceNet
         val size = maxOf(width, height)
-        val squareBitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val squareBitmap = createBitmap(size, size)
         val canvas = android.graphics.Canvas(squareBitmap)
         val paint = android.graphics.Paint().apply {
             isFilterBitmap = true
@@ -445,4 +447,72 @@ class OfflineFaceNetService(private val context: Context) {
         val confidence: Float,
         val message: String = ""
     )
+
+    data class IdentificationResult(
+        val personId: String?,
+        val confidence: Float
+    )
+
+    suspend fun identifyFace(bitmap: Bitmap): IdentificationResult? {
+        return withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Starting face identification")
+
+                // Detect face
+                val faces = detectFacesSimple(bitmap)
+                if (faces.isEmpty()) {
+                    Log.e(TAG, "No face detected for identification")
+                    return@withContext null
+                }
+
+                // Get the largest face
+                val face = faces.maxByOrNull { it.width * it.height }!!
+
+                // Determine which rotation was successful
+                val rotationUsed = findSuccessfulRotation(bitmap, faces)
+                val processedBitmap = if (rotationUsed == 0f) bitmap else rotateBitmap(bitmap, rotationUsed)
+
+                // Crop face from image
+                val faceBitmap = cropFace(processedBitmap, face)
+
+                // Generate embedding for current face
+                val currentEmbedding = faceNetModel.generateEmbedding(faceBitmap)
+                if (currentEmbedding == null) {
+                    Log.e(TAG, "Failed to generate embedding for identification")
+                    return@withContext null
+                }
+
+                // Compare with all stored embeddings to find the best match
+                val allEmbeddings = getAllStoredEmbeddings()
+                if (allEmbeddings.isEmpty()) {
+                    Log.w(TAG, "No stored embeddings found")
+                    return@withContext null
+                }
+
+                var bestMatchPersonId: String? = null
+                var bestSimilarity = 0f
+
+                allEmbeddings.forEach { (personId, storedEmbedding) ->
+                    val similarity = faceNetModel.calculateSimilarity(currentEmbedding, storedEmbedding)
+                    Log.d(TAG, "Checking person $personId: similarity = $similarity")
+
+                    if (similarity > bestSimilarity && similarity >= faceNetModel.getSimilarityThreshold()) {
+                        bestSimilarity = similarity
+                        bestMatchPersonId = personId
+                    }
+                }
+
+                if (bestMatchPersonId != null) {
+                    Log.d(TAG, "Best match found: $bestMatchPersonId with similarity $bestSimilarity")
+                    IdentificationResult(bestMatchPersonId, bestSimilarity)
+                } else {
+                    Log.w(TAG, "No match found above threshold")
+                    null
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Face identification failed", e)
+                null
+            }
+        }
+    }
 }

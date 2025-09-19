@@ -9,14 +9,12 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import com.mandelbulb.smartattendancesystem.ui.components.AppIcons
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -45,7 +43,7 @@ fun LoginScreen(
     onNavigateToRegistration: () -> Unit
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     
     var isProcessing by remember { mutableStateOf(false) }
@@ -167,7 +165,7 @@ fun LoginScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            Icons.Default.Face,
+                            imageVector = AppIcons.UserCircle,
                             contentDescription = "Face guide",
                             modifier = Modifier.size(200.dp),
                             tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
@@ -255,7 +253,7 @@ fun LoginScreen(
                     color = MaterialTheme.colorScheme.onPrimary
                 )
             } else {
-                Icon(Icons.Default.Face, contentDescription = null)
+                Icon(AppIcons.FaceRecognition, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Verify Face")
             }
@@ -335,13 +333,31 @@ private fun captureAndVerifyFace(
 
                         // Update UI to show liveness check
                         withContext(Dispatchers.Main) {
+                            onLivenessUpdate("Identifying user...")
+                        }
+
+                        // First, identify who this person is
+                        val identificationResult = faceRecognitionManager.identifyFace(bitmap)
+
+                        if (identificationResult == null || identificationResult.personId.isNullOrEmpty()) {
+                            withContext(Dispatchers.Main) {
+                                onError("Face not recognized. Please register first.")
+                                onProcessing(false)
+                            }
+                            photoFile.delete()
+                            return@launch
+                        }
+
+                        Log.d("LoginScreen", "Identified user: ${identificationResult.personId} with confidence: ${identificationResult.confidence}")
+
+                        // Now verify this is a real person (liveness check)
+                        withContext(Dispatchers.Main) {
                             onLivenessUpdate("Performing liveness check...")
                         }
 
-                        // Verify face with liveness check using FaceRecognitionManager
                         val verificationResult = faceRecognitionManager.verifyFace(
                             bitmap = bitmap,
-                            personId = userProfile.employeeId,
+                            personId = identificationResult.personId, // Use the identified person, not the stored one
                             requireLiveness = true
                         )
 
@@ -354,20 +370,41 @@ private fun captureAndVerifyFace(
                                 onError("Spoofing attempt detected! Please use your real face.")
                                 onProcessing(false)
                             }
-                        } else if (verificationResult.isIdentical && verificationResult.isLive) {
+                        } else if (verificationResult.isIdentical) {
                             // Update liveness status
                             withContext(Dispatchers.Main) {
                                 onLivenessUpdate("✓ Liveness verified (${(verificationResult.livenessConfidence * 100).toInt()}% confidence)")
                             }
-                            // Face verified successfully
-                            userPreferences.saveUserProfile(
-                                isRegistered = true,
-                                employeeId = userProfile.employeeId,
-                                employeeCode = userProfile.employeeCode,
-                                name = userProfile.name,
-                                department = userProfile.department,
-                                azureFaceId = userProfile.faceId
-                            )
+
+                            // Load the identified user's profile from database
+                            val identifiedUserProfile = database.userProfileDao().getUserProfileByEmployeeId(identificationResult.personId)
+
+                            if (identifiedUserProfile != null) {
+                                // Set this user as the current user in database
+                                database.userProfileDao().clearCurrentUser()
+                                database.userProfileDao().setCurrentUser(identifiedUserProfile.employeeId)
+
+                                // Face verified successfully - save the correct user's profile
+                                userPreferences.saveUserProfile(
+                                    isRegistered = true,
+                                    employeeId = identifiedUserProfile.employeeId,
+                                    employeeCode = identifiedUserProfile.employeeCode,
+                                    name = identifiedUserProfile.name,
+                                    department = identifiedUserProfile.department,
+                                    azureFaceId = identifiedUserProfile.faceId
+                                )
+
+                                Log.d("LoginScreen", "Logged in as: ${identifiedUserProfile.name} (${identifiedUserProfile.employeeId})")
+                            } else {
+                                // User identified by face but not found in database - this shouldn't happen
+                                Log.e("LoginScreen", "User ${identificationResult.personId} identified by face but not found in database")
+                                withContext(Dispatchers.Main) {
+                                    onError("User profile not found. Please register again.")
+                                    onProcessing(false)
+                                }
+                                photoFile.delete()
+                                return@launch
+                            }
 
                             withContext(Dispatchers.Main) {
                                 onSuccess()
@@ -375,11 +412,7 @@ private fun captureAndVerifyFace(
                             }
                         } else {
                             withContext(Dispatchers.Main) {
-                                val message = if (!verificationResult.isLive) {
-                                    "Liveness check failed. Please use your real face."
-                                } else {
-                                    "Face not recognized. Please try again."
-                                }
+                                val message = "Face not recognized. Please try again."
                                 onError(message)
                                 onProcessing(false)
                             }
@@ -411,7 +444,7 @@ private fun captureAndVerifyFace(
                                     onProcessing(false)
                                 }
                             }
-                        } catch (dbError: Exception) {
+                        } catch (_: Exception) {
                             withContext(Dispatchers.Main) {
                                 onError("Login failed: ${e.message}")
                                 onProcessing(false)

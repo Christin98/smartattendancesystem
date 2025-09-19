@@ -617,17 +617,19 @@ private suspend fun registerEmployee(
 
                 // Save to local database with our consistent employeeId
                 val userProfile = UserProfileEntity(
-                    id = 1,
-                    employeeId = employeeId,  // Use our locally generated ID consistently
+                    employeeId = employeeId,  // Use employeeId as primary key
                     employeeCode = code,
                     name = name,
                     department = department,
                     embedding = embeddingBytes,  // Store FaceNet embedding
                     faceId = azureFaceId,  // Store Azure face ID if available
                     registrationDate = System.currentTimeMillis(),
-                    lastSync = if (newEmployee != null) System.currentTimeMillis() else 0L
+                    lastSync = if (newEmployee != null) System.currentTimeMillis() else 0L,
+                    isCurrentUser = true  // Mark this user as the current user
                 )
 
+                // Clear any existing current user and insert the new one
+                database.userProfileDao().clearCurrentUser()
                 database.userProfileDao().insert(userProfile)
 
                 // Save to preferences with our consistent employeeId

@@ -19,15 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.ExitToApp
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.LocationOn
+import com.mandelbulb.smartattendancesystem.ui.components.AppIcons
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -231,7 +223,7 @@ fun SingleUserMainScreen(
                             }
                         ) {
                             Icon(
-                                Icons.Default.Refresh,
+                                AppIcons.Refresh,
                                 contentDescription = "Sync Status",
                                 tint = when {
                                     syncStatus.isSyncing -> MaterialTheme.colorScheme.primary
@@ -242,10 +234,10 @@ fun SingleUserMainScreen(
                         }
                     }
                     IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        Icon(AppIcons.Settings, contentDescription = "Settings")
                     }
                     IconButton(onClick = { showLogoutDialog = true }) {
-                        Icon(Icons.Default.ExitToApp, contentDescription = "Logout")
+                        Icon(AppIcons.SignOut, contentDescription = "Logout")
                     }
                 }
             )
@@ -364,7 +356,7 @@ fun SingleUserMainScreen(
                                 )
                             } else {
                                 Icon(
-                                    Icons.Default.Info,
+                                    AppIcons.Info,
                                     contentDescription = null,
                                     modifier = Modifier.size(16.dp),
                                     tint = MaterialTheme.colorScheme.error
@@ -426,7 +418,7 @@ fun SingleUserMainScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Icon(
-                            Icons.Default.ArrowForward,
+                            AppIcons.ArrowForward,
                             contentDescription = null,
                             modifier = Modifier.size(24.dp),
                             tint = MaterialTheme.colorScheme.primary
@@ -466,7 +458,7 @@ fun SingleUserMainScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Icon(
-                            Icons.Default.ArrowBack,
+                            AppIcons.ArrowBack,
                             contentDescription = null,
                             modifier = Modifier.size(24.dp),
                             tint = MaterialTheme.colorScheme.secondary
@@ -511,7 +503,7 @@ fun SingleUserMainScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Icon(
-                            Icons.Default.DateRange,
+                            AppIcons.Calendar,
                             contentDescription = null,
                             modifier = Modifier.size(28.dp),
                             tint = MaterialTheme.colorScheme.onTertiaryContainer
@@ -586,7 +578,7 @@ fun SingleUserMainScreen(
                     enabled = !isProcessing && !showFaceVerification && canCheckIn,
                     animationsEnabled = animationsEnabled
                 ) {
-                    Icon(Icons.Default.ArrowForward, contentDescription = null)
+                    Icon(AppIcons.ArrowForward, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("CHECK IN")
                 }
@@ -600,7 +592,7 @@ fun SingleUserMainScreen(
                     enabled = !isProcessing && !showFaceVerification && canCheckOut,
                     animationsEnabled = animationsEnabled
                 ) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = null)
+                    Icon(AppIcons.ArrowBack, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("CHECK OUT")
                 }
@@ -684,7 +676,7 @@ fun SingleUserMainScreen(
                                         ) {
                                             Icon(
                                                 imageVector = if (record.checkType == "IN")
-                                                    Icons.Default.ArrowForward else Icons.Default.ArrowBack,
+                                                    AppIcons.ArrowForward else AppIcons.ArrowBack,
                                                 contentDescription = null,
                                                 modifier = Modifier.size(20.dp),
                                                 tint = if (record.checkType == "IN")
@@ -706,7 +698,7 @@ fun SingleUserMainScreen(
                                             }
                                             if (!record.synced) {
                                                 Icon(
-                                                    Icons.Default.Info,
+                                                    AppIcons.Info,
                                                     contentDescription = "Not synced",
                                                     modifier = Modifier.size(16.dp),
                                                     tint = MaterialTheme.colorScheme.error
@@ -725,7 +717,7 @@ fun SingleUserMainScreen(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Icon(
-                                                Icons.Default.LocationOn,
+                                                AppIcons.Location,
                                                 contentDescription = "Location",
                                                 modifier = Modifier.size(14.dp),
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant

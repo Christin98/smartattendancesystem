@@ -153,6 +153,8 @@ class FaceNetModel(private val context: Context) {
         return similarity >= SIMILARITY_THRESHOLD && l2Distance <= L2_NORM_THRESHOLD
     }
 
+    fun getSimilarityThreshold(): Float = SIMILARITY_THRESHOLD
+
     fun close() {
         interpreter?.close()
         interpreter = null

@@ -7,8 +7,8 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 
 @Database(
-    entities = [UserProfileEntity::class, AttendanceEntity::class, AppSettingsEntity::class], 
-    version = 3, 
+    entities = [UserProfileEntity::class, AttendanceEntity::class, AppSettingsEntity::class],
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -27,7 +27,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "smart_attendance"
                 )
-                    .fallbackToDestructiveMigration(false) // For development
+                    .fallbackToDestructiveMigration() // Allow destructive migration for development
                     .build()
                 INSTANCE = inst
                 inst

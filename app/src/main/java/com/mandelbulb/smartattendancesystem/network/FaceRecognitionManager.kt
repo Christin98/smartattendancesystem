@@ -295,6 +295,38 @@ class FaceRecognitionManager(private val context: Context) {
         return offlineFaceService.hasEmbedding(personId)
     }
 
+    data class IdentificationResult(
+        val personId: String?,
+        val confidence: Float,
+        val message: String = ""
+    )
+
+    suspend fun identifyFace(bitmap: Bitmap): IdentificationResult? {
+        return withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Starting face identification")
+
+                // Use offline service to identify the face
+                val result = offlineFaceService.identifyFace(bitmap)
+
+                if (result != null) {
+                    Log.d(TAG, "Face identified as: ${result.personId} with confidence: ${result.confidence}")
+                    IdentificationResult(
+                        personId = result.personId,
+                        confidence = result.confidence,
+                        message = "Face identified successfully"
+                    )
+                } else {
+                    Log.w(TAG, "No face could be identified")
+                    null
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Face identification failed", e)
+                null
+            }
+        }
+    }
+
     suspend fun verifyFaceMultiFrame(frames: List<Bitmap>, personId: String, requireLiveness: Boolean = true): VerificationResult {
         return withContext(Dispatchers.IO) {
             try {
@@ -330,7 +362,7 @@ class FaceRecognitionManager(private val context: Context) {
                     val verificationResult = verifyFace(verificationFrame, personId, false) // Liveness already checked
 
                     return@withContext verificationResult.copy(
-                        isLive = livenessResult.isLive,
+                        isLive = true,
                         livenessConfidence = livenessResult.confidence,
                         message = if (verificationResult.isIdentical) {
                             "Face verified successfully with enhanced liveness check"

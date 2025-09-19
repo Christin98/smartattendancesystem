@@ -67,17 +67,22 @@ class MainActivity : ComponentActivity() {
 
         val userPreferences = UserPreferences(this)
         val isRegistered = runBlocking { userPreferences.isRegistered.first() }
-        
+
         setContent {
             SmartAttendanceSystemTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    var currentScreen by remember { 
-                        mutableStateOf(
-                            if (isRegistered) "main" else "login"
-                        )
+                    var currentScreen by remember {
+                        mutableStateOf("splash")
                     }
-                    
+
                     when (currentScreen) {
+                        "splash" -> {
+                            SplashScreen(
+                                onSplashComplete = {
+                                    currentScreen = if (isRegistered) "main" else "login"
+                                }
+                            )
+                        }
                         "login" -> {
                             LoginScreen(
                                 onLoginSuccess = { currentScreen = "main" },
